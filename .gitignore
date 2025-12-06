@@ -1,3 +1,2 @@
-*.xcuserstate
-project.xcworkspace/
-xcuserdata/
+PhotoSorter.xcodeproj/project.xcworkspace
+PhotoSorter.xcodeproj/xcuserdata/*

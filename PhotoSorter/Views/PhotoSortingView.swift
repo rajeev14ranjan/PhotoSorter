@@ -22,12 +22,28 @@ struct PhotoSortingView: View {
   var body: some View {
     ZStack {
       if viewModel.isLoading {
-        VStack {
-          ProgressView()
-            .scaleEffect(1.5)
-          Text("Loading photos...")
-            .padding()
+        VStack(spacing: 20) {
+          ProgressView(value: viewModel.importProgress) {
+            Text("Importing photos...")
+              .font(.headline)
+          } currentValueLabel: {
+            Text("\(viewModel.importedCount) photos imported")
+              .font(.caption)
+              .foregroundColor(.secondary)
+          }
+          .progressViewStyle(.linear)
+          .frame(width: 300)
+          
+          if viewModel.importedCount > 0 {
+            Button("Cancel") {
+              viewModel.cancelImport()
+            }
+            .buttonStyle(.bordered)
+          }
         }
+        .padding()
+        .background(Color(.windowBackgroundColor))
+        .cornerRadius(12)
       } else if viewModel.currentPhoto == nil {
         VStack(spacing: 20) {
           Image(systemName: "photo.on.rectangle.angled")

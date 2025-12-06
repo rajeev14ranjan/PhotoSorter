@@ -94,9 +94,11 @@ struct PhotoDisplayView: View {
       }
       .onChange(of: viewModel.currentPhoto) { oldValue, newValue in
         loadImage()
+        preloadNextImage()
       }
       .onAppear {
         loadImage()
+        preloadNextImage()
       }
     }
   }
@@ -110,24 +112,62 @@ struct PhotoDisplayView: View {
     let path = photo.path
     let url = URL(fileURLWithPath: path)
 
-    // Check if file exists
-    guard FileManager.default.fileExists(atPath: path) else {
-      errorMessage = "File not found: \(url.lastPathComponent)"
-      print("File does not exist at path: \(path)")
+    // Check cache first for instant loading
+    if let cachedImage = ImageCache.shared.getImage(forPath: path) {
+      loadedImage = cachedImage
       return
     }
 
-    // Try multiple methods to load the image
-    if let image = NSImage(contentsOf: url) {
-      loadedImage = image
-    } else if let image = NSImage(contentsOfFile: path) {
-      loadedImage = image
-    } else if let data = try? Data(contentsOf: url), let image = NSImage(data: data) {
-      loadedImage = image
-    } else {
-      errorMessage = "Unsupported format: \(url.lastPathComponent)"
-      print("Failed to load image from path: \(path)")
-      print("File extension: \(url.pathExtension)")
+    // Check if file exists
+    guard FileManager.default.fileExists(atPath: path) else {
+      errorMessage = "File not found: \(url.lastPathComponent)"
+      return
+    }
+
+    // Load image asynchronously to avoid blocking UI
+    Task.detached(priority: .userInitiated) {
+      var image: NSImage?
+      
+      // Try multiple methods to load the image
+      if let img = NSImage(contentsOf: url) {
+        image = img
+      } else if let img = NSImage(contentsOfFile: path) {
+        image = img
+      } else if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
+        image = img
+      }
+      
+      await MainActor.run {
+        if let image = image {
+          // Cache the loaded image
+          ImageCache.shared.setImage(image, forPath: path)
+          self.loadedImage = image
+        } else {
+          self.errorMessage = "Unsupported format: \(url.lastPathComponent)"
+        }
+      }
+    }
+  }
+  
+  // Preload next image for smooth navigation
+  private func preloadNextImage() {
+    let filtered = viewModel.filteredPhotos
+    let nextIndex = viewModel.currentIndex + 1
+    
+    if nextIndex < filtered.count {
+      let nextPhoto = filtered[nextIndex]
+      let nextPath = nextPhoto.path
+      
+      // Only preload if not already cached
+      if ImageCache.shared.getImage(forPath: nextPath) == nil {
+        Task.detached(priority: .utility) {
+          if let image = NSImage(contentsOfFile: nextPath) {
+            await MainActor.run {
+              ImageCache.shared.setImage(image, forPath: nextPath)
+            }
+          }
+        }
+      }
     }
   }
 }

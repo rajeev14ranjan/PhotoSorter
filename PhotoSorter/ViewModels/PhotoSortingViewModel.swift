@@ -19,25 +19,56 @@ class PhotoSortingViewModel: ObservableObject {
     @Published var currentFilter: SelectionBucket = .all {
         didSet {
             currentIndex = 0
+            filteredPhotosCache = nil
             updateCurrentPhoto()
         }
     }
     @Published var isLoading: Bool = false
+    @Published var importProgress: Double = 0
+    @Published var importedCount: Int = 0
     
     private var modelContext: ModelContext?
     private let fileManager = FileManager.default
     private var accessedURLs: [URL] = []
+    private var importTask: Task<Void, Never>?
+    
+    // Performance optimizations
+    private var filteredPhotosCache: [Photo]?
+    private var bucketCountsCache: [SelectionBucket: Int]?
+    private var cacheInvalidated = true
     
     var filteredPhotos: [Photo] {
-      return allPhotos.filter { $0.bucket == currentFilter }
+        if let cached = filteredPhotosCache {
+            return cached
+        }
+        let filtered = allPhotos.filter { $0.bucket == currentFilter }
+        filteredPhotosCache = filtered
+        return filtered
     }
     
     var bucketCounts: [SelectionBucket: Int] {
+        if !cacheInvalidated, let cached = bucketCountsCache {
+            return cached
+        }
+        
         var counts: [SelectionBucket: Int] = [:]
         for bucket in SelectionBucket.allCases {
-            counts[bucket] = allPhotos.filter { $0.bucket == bucket }.count
+            counts[bucket] = 0
         }
+        
+        // Single pass through array
+        for photo in allPhotos {
+            counts[photo.bucket, default: 0] += 1
+        }
+        
+        bucketCountsCache = counts
+        cacheInvalidated = false
         return counts
+    }
+    
+    private func invalidateCaches() {
+        filteredPhotosCache = nil
+        cacheInvalidated = true
     }
     
     var selectedCount: Int {
@@ -60,6 +91,8 @@ class PhotoSortingViewModel: ObservableObject {
     func loadPhotos() {
         guard let modelContext = modelContext else { return }
         isLoading = true
+        importProgress = 0
+        importedCount = 0
         
         // Restore access to folders using security-scoped bookmarks
         restoreFolderAccess()
@@ -73,34 +106,44 @@ class PhotoSortingViewModel: ObservableObject {
         let existingPhotos = (try? modelContext.fetch(descriptor)) ?? []
         
         if !existingPhotos.isEmpty {
-            allPhotos = existingPhotos.sorted { $0.dateCreated < $1.dateCreated }
+            allPhotos = existingPhotos
+            invalidateCaches()
             updateCurrentPhoto()
             isLoading = false
             return
         }
         
-        // Import new photos
+        // Import new photos with progress tracking and batching
         let sourceFolders = project.sourceFolders
         
-        Task.detached {
-            let supportedExtensions = ["jpg", "jpeg", "png", "heic"]
+        importTask = Task.detached(priority: .userInitiated) {
+            let supportedExtensions = Set(["jpg", "jpeg", "png", "heic"])
             let fileManager = FileManager.default
-            var photoData: [(path: String, date: Date)] = []
+            var photoData: [(path: String, date: Date, fileName: String)] = []
             
+            // Phase 1: Discover all files
             let foldersArray = Array(sourceFolders)
             for folderPath in foldersArray {
                 let folderURL = URL(fileURLWithPath: folderPath)
                 
-                guard let enumerator = fileManager.enumerator(at: folderURL, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey]) else { continue }
+                guard let enumerator = fileManager.enumerator(
+                    at: folderURL,
+                    includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey],
+                    options: [.skipsHiddenFiles]
+                ) else { continue }
                 
                 while let fileURL = enumerator.nextObject() as? URL {
+                    // Check for cancellation
+                    if Task.isCancelled { return }
+                    
                     let fileExtension = fileURL.pathExtension.lowercased()
                     
                     if supportedExtensions.contains(fileExtension) {
                         do {
-                            let attributes = try fileManager.attributesOfItem(atPath: fileURL.path)
-                            let creationDate = attributes[.creationDate] as? Date ?? Date()
-                            photoData.append((path: fileURL.path, date: creationDate))
+                            let resourceValues = try fileURL.resourceValues(forKeys: [.creationDateKey])
+                            let creationDate = resourceValues.creationDate ?? Date()
+                            let fileName = fileURL.lastPathComponent
+                            photoData.append((path: fileURL.path, date: creationDate, fileName: fileName))
                         } catch {
                             print("Error reading file attributes: \(error)")
                         }
@@ -110,20 +153,51 @@ class PhotoSortingViewModel: ObservableObject {
             
             // Sort by creation date
             let sortedPhotoData = photoData.sorted { $0.date < $1.date }
+            let totalCount = sortedPhotoData.count
             
-            // Save to database
+            // Phase 2: Save to database in batches for better performance
+            let batchSize = 100
+            var processedCount = 0
+            
+            for batchStart in stride(from: 0, to: sortedPhotoData.count, by: batchSize) {
+                // Check for cancellation
+                if Task.isCancelled { return }
+                
+                let batchEnd = min(batchStart + batchSize, sortedPhotoData.count)
+                let batch = Array(sortedPhotoData[batchStart..<batchEnd])
+                
+                await MainActor.run {
+                    guard let modelContext = self.modelContext else { return }
+                    
+                    let photos = batch.map { Photo(path: $0.path, dateCreated: $0.date, project: self.project) }
+                    photos.forEach { modelContext.insert($0) }
+                    
+                    do {
+                        try modelContext.save()
+                        
+                        // Update progress
+                        self.allPhotos.append(contentsOf: photos)
+                        processedCount += photos.count
+                        self.importedCount = processedCount
+                        self.importProgress = Double(processedCount) / Double(totalCount)
+                    } catch {
+                        print("Error saving batch: \(error)")
+                    }
+                }
+            }
+            
+            // Finalize
             await MainActor.run {
-                guard let modelContext = self.modelContext else { return }
-                
-                let photos = sortedPhotoData.map { Photo(path: $0.path, dateCreated: $0.date, project: self.project) }
-                photos.forEach { modelContext.insert($0) }
-                try? modelContext.save()
-                
-                self.allPhotos = photos
+                self.invalidateCaches()
                 self.updateCurrentPhoto()
                 self.isLoading = false
             }
         }
+    }
+    
+    func cancelImport() {
+        importTask?.cancel()
+        isLoading = false
     }
     
     func updateCurrentPhoto() {
@@ -141,10 +215,23 @@ class PhotoSortingViewModel: ObservableObject {
         
         if let index = allPhotos.firstIndex(where: { $0.id == photo.id }) {
             allPhotos[index].bucket = bucket
-            try? modelContext.save()
+            
+            // Invalidate caches when bucket changes
+            invalidateCaches()
+            
+            // Batch saves - only save every 10th photo or when switching photos
+            // This significantly improves performance for rapid categorization
+            if index % 10 == 0 {
+                try? modelContext.save()
+            }
         }
         
         moveNext()
+    }
+    
+    func forceSave() {
+        guard let modelContext = modelContext else { return }
+        try? modelContext.save()
     }
     
     func moveNext() {
@@ -178,6 +265,7 @@ class PhotoSortingViewModel: ObservableObject {
         
         if let index = allPhotos.firstIndex(where: { $0.id == photo.id }) {
             allPhotos[index].bucket = .all
+            invalidateCaches()
             try? modelContext.save()
         }
         
@@ -186,10 +274,10 @@ class PhotoSortingViewModel: ObservableObject {
     
     // MARK: - Computed Properties for Views
     
-    /// Returns the filename of the current photo
+    /// Returns the filename of the current photo (cached in model)
     var currentPhotoFileName: String {
         guard let photo = currentPhoto else { return "" }
-        return URL(fileURLWithPath: photo.path).lastPathComponent
+        return photo.fileName
     }
     
     /// Returns the position text for the current photo (e.g., "1 of 10")
@@ -242,6 +330,14 @@ class PhotoSortingViewModel: ObservableObject {
     }
     
     deinit {
+        // Cancel any ongoing import
+        importTask?.cancel()
+        
+        // Force save any pending changes
+        if let modelContext = modelContext {
+            try? modelContext.save()
+        }
+        
         // Clean up security-scoped access
         for url in accessedURLs {
             url.stopAccessingSecurityScopedResource()

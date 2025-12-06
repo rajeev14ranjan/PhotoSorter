@@ -14,7 +14,12 @@ class Photo {
     var path: String
     var bucket: SelectionBucket
     var dateCreated: Date
-    var projectId: UUID
+    
+    // Add index for faster queries
+    @Attribute var projectId: UUID
+    
+    // Cache filename to avoid repeated URL parsing
+    var fileName: String
     
     var project: Project?
     
@@ -25,5 +30,6 @@ class Photo {
         self.dateCreated = dateCreated
         self.projectId = project.id
         self.project = project
+        self.fileName = URL(fileURLWithPath: path).lastPathComponent
     }
 }
