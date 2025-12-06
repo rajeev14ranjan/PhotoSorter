@@ -16,7 +16,7 @@ class PhotoSortingViewModel: ObservableObject {
     @Published var allPhotos: [Photo] = []
     @Published var currentPhoto: Photo?
     @Published var currentIndex: Int = 0
-    @Published var currentFilter: SelectionBucket = .unrated {
+    @Published var currentFilter: SelectionBucket = .all {
         didSet {
             currentIndex = 0
             updateCurrentPhoto()
@@ -41,7 +41,7 @@ class PhotoSortingViewModel: ObservableObject {
     }
     
     var selectedCount: Int {
-        bucketCounts[.definitelySelected] ?? 0
+        bucketCounts[.selected] ?? 0
     }
     
     var remainingToSelect: Int {
@@ -115,7 +115,7 @@ class PhotoSortingViewModel: ObservableObject {
             await MainActor.run {
                 guard let modelContext = self.modelContext else { return }
                 
-                let photos = sortedPhotoData.map { Photo(path: $0.path, dateCreated: $0.date, projectId: projectId) }
+                let photos = sortedPhotoData.map { Photo(path: $0.path, dateCreated: $0.date, project: self.project) }
                 photos.forEach { modelContext.insert($0) }
                 try? modelContext.save()
                 
@@ -177,7 +177,7 @@ class PhotoSortingViewModel: ObservableObject {
         guard let photo = currentPhoto, let modelContext = modelContext else { return }
         
         if let index = allPhotos.firstIndex(where: { $0.id == photo.id }) {
-            allPhotos[index].bucket = .unrated
+            allPhotos[index].bucket = .all
             try? modelContext.save()
         }
         

@@ -18,6 +18,9 @@ class Project {
     var dateCreated: Date
     var dateModified: Date
     
+    @Relationship(deleteRule: .cascade, inverse: \Photo.project)
+    var photos: [Photo]? = []
+    
     init(name: String, sourceFolders: [String], targetSelectionCount: Int, folderBookmarks: [Data] = []) {
         self.id = UUID()
         self.name = name

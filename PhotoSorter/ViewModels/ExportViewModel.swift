@@ -11,7 +11,7 @@ import Combine
 
 @MainActor
 class ExportViewModel: ObservableObject {
-    @Published var selectedBuckets: Set<SelectionBucket> = [.definitelySelected]
+    @Published var selectedBuckets: Set<SelectionBucket> = [.selected]
     @Published var isExporting = false
     @Published var exportProgress: Double = 0
     @Published var exportedCount: Int = 0

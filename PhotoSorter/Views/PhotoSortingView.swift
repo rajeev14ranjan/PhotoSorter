@@ -34,7 +34,7 @@ struct PhotoSortingView: View {
             .font(.system(size: 60))
             .foregroundColor(.secondary)
 
-          Text("No photos in \(viewModel.currentFilter.rawValue)")
+          Text("No photos in \(viewModel.currentFilter.label)")
             .font(.title2)
             .foregroundColor(.secondary)
 
@@ -46,7 +46,7 @@ struct PhotoSortingView: View {
             ForEach(SelectionBucket.allCases, id: \.self) { bucket in
               HStack {
                 Image(systemName: bucket.iconName)
-                Text(bucket.rawValue)
+                Text(bucket.label)
                 Text("(\(viewModel.bucketCounts[bucket] ?? 0))")
                   .foregroundColor(.secondary)
               }
@@ -61,22 +61,26 @@ struct PhotoSortingView: View {
         ZStack {
           // Full screen photo display
           PhotoDisplayView(viewModel: viewModel)
-          
+
           // Top transparent control bar overlay
           VStack {
             HStack(spacing: 16) {
+              Spacer()
               StatsBarView(viewModel: viewModel)
 
               Spacer()
 
-              Button {
+              Button(action: {
                 showingExport = true
-              } label: {
+              }) {
                 Image(systemName: "square.and.arrow.up")
-                  .font(.system(size: 18))
-                  .padding(8)
+                  .font(.system(size: 20))
+                  .foregroundColor(.white)
+                  .padding(10)
+                  .background(.clear)
+                  .cornerRadius(8)
               }
-              .buttonStyle(.bordered)
+              .buttonStyle(.borderless)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
@@ -90,7 +94,7 @@ struct PhotoSortingView: View {
                 endPoint: .bottom
               )
             )
-            
+
             Spacer()
           }
 
@@ -111,9 +115,9 @@ struct PhotoSortingView: View {
               )
           }
         }
+        .ignoresSafeArea()
       }
     }
-    .navigationTitle(project.name)
     .sheet(isPresented: $showingExport) {
       ExportView(photoSortingViewModel: viewModel)
     }
@@ -126,58 +130,66 @@ struct PhotoSortingView: View {
     @ObservedObject var viewModel: PhotoSortingViewModel
 
     var body: some View {
-      HStack(spacing: 20) {
-        // Filter dropdown
-        Text("Viewing:")
-          .font(.system(size: 16, weight: .semibold))
-          .foregroundColor(.white)
-
-        Picker("", selection: $viewModel.currentFilter) {
-          Text("All Unrated").tag(SelectionBucket.unrated)
-          ForEach(SelectionBucket.allCases.filter { $0 != .unrated }, id: \.self) { bucket in
-            HStack {
-              Image(systemName: bucket.iconName)
-              Text(bucket.rawValue)
+      HStack(spacing: 24) {
+        HStack(spacing: 8) {
+          Picker("Viewing:", selection: $viewModel.currentFilter) {
+            ForEach(SelectionBucket.allCases, id: \.self) { bucket in
+              HStack {
+                Image(systemName: bucket.iconName)
+                Text(bucket.label)
+              }
+              .font(.system(size: 18, weight: .medium))
+              .tag(bucket)
             }
-            .tag(bucket)
           }
+          .pickerStyle(.menu)
+          .font(.system(size: 18))
+          .frame(width: 200)
         }
-        .pickerStyle(.menu)
-        .font(.system(size: 14))
-        .frame(width: 200)
 
-        Text("\(viewModel.currentIndex + 1) of \(viewModel.filteredPhotos.count)")
-          .font(.system(size: 14))
-          .foregroundColor(.white.opacity(0.8))
+        Divider()
+          .frame(height: 30)
+          .background(Color.white.opacity(0.5))
 
-        // Stats row
-        HStack(spacing: 20) {
+        HStack(spacing: 6) {
+          Image(systemName: "photo")
+            .font(.system(size: 13))
+            .foregroundColor(.white.opacity(0.7))
+          Text("\(viewModel.currentIndex + 1) of \(viewModel.filteredPhotos.count)")
+            .font(.system(size: 14, weight: .medium))
+            .foregroundColor(.white)
+        }
+
+        Divider()
+          .frame(height: 30)
+          .background(Color.white.opacity(0.5))
+
+        HStack(spacing: 16) {
           StatItemView(
-            icon: "star.fill",
-            label: "Selected",
-            value: "\(viewModel.selectedCount)",
-            color: .green
+            icon: "photo.stack",
+            label: "Total",
+            value: "\(viewModel.allPhotos.count)",
+            color: .white.opacity(0.7)
           )
 
           StatItemView(
             icon: "arrow.down.circle",
             label: "Remaining",
             value: "\(viewModel.remainingToSelect)",
-            color: .orange
+            color: .white.opacity(0.7)
           )
+        }
 
-          StatItemView(
-            icon: "photo.stack",
-            label: "Total",
-            value: "\(viewModel.allPhotos.count)",
-            color: .blue
-          )
+        Divider()
+          .frame(height: 30)
+          .background(Color.white.opacity(0.5))
 
+        HStack(spacing: 16) {
           ForEach(SelectionBucket.allCases, id: \.self) { bucket in
-            if bucket != .unrated {
+            if bucket != .all {
               StatItemView(
                 icon: bucket.iconName,
-                label: bucket.rawValue,
+                label: bucket.label,
                 value: "\(viewModel.bucketCounts[bucket] ?? 0)",
                 color: bucket.color
               )
@@ -195,18 +207,18 @@ struct PhotoSortingView: View {
     let color: Color
 
     var body: some View {
-      HStack(spacing: 5) {
-        Image(systemName: icon)
-          .font(.system(size: 14))
-          .foregroundColor(color)
-        VStack(alignment: .leading, spacing: 1) {
+      VStack(alignment: .center, spacing: 1) {
+        HStack(spacing: 5) {
+          Image(systemName: icon)
+            .font(.system(size: 14))
+            .foregroundColor(color)
           Text(value)
             .font(.system(size: 15, weight: .semibold))
             .foregroundColor(.white)
-          Text(label)
-            .font(.system(size: 11))
-            .foregroundColor(.white.opacity(0.7))
         }
+        Text(label)
+          .font(.system(size: 11))
+          .foregroundColor(.white.opacity(0.7))
       }
     }
   }
@@ -353,7 +365,7 @@ struct PhotoSortingView: View {
               Image(systemName: bucket.iconName)
                 .font(.system(size: 14))
                 .foregroundColor(bucket.color)
-              Text(bucket.rawValue)
+              Text(bucket.label)
                 .font(.system(size: 14))
               Spacer()
               Text("\(viewModel.bucketCounts[bucket] ?? 0)")
@@ -383,27 +395,34 @@ struct PhotoSortingView: View {
     var body: some View {
       HStack(spacing: 30) {
         Spacer()
-        
-        ForEach(SelectionBucket.allCases.filter { $0 != .unrated && $0 != viewModel.currentFilter }, id: \.self) { bucket in
+
+        ForEach(SelectionBucket.allCases.filter { $0 != .all && $0 != viewModel.currentFilter }, id: \.self) { bucket in
           Button {
             viewModel.selectBucket(bucket)
           } label: {
             HStack(spacing: 6) {
               Image(systemName: bucket.iconName)
                 .font(.system(size: 32))
-              Text(bucket.rawValue)
+              Text(bucket.label.replacingOccurrences(of: "ed\\b", with: "", options: .regularExpression))
                 .font(.system(size: 20, weight: .semibold))
             }
-            .foregroundColor(bucket.bgColor)
+            .foregroundColor(bucket.color)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
           }
           .buttonStyle(.glass)
           .keyboardShortcut(keyEquivalent(for: bucket), modifiers: [])
+          .onHover { isHovered in
+            if isHovered {
+              NSCursor.pointingHand.push()
+            } else {
+              NSCursor.pop()
+            }
+          }
         }
 
         // Reset button - only show when not viewing unrated
-        if viewModel.currentFilter != .unrated {
+        if viewModel.currentFilter != .all {
           Button {
             viewModel.resetCurrentPhotoToUnrated()
           } label: {
@@ -420,18 +439,18 @@ struct PhotoSortingView: View {
           .buttonStyle(.glass)
           .keyboardShortcut("0", modifiers: [])
         }
-        
+
         Spacer()
       }
     }
 
     private func keyEquivalent(for bucket: SelectionBucket) -> KeyEquivalent {
       switch bucket {
-      case .definitelySelected: return "1"
-      case .selectionCandidate: return "2"
-      case .notSure: return "3"
+      case .selected: return "1"
+      case .shortlisted: return "2"
+      case .unsure: return "3"
       case .rejected: return "4"
-      case .unrated: return " "
+      case .all: return " "
       }
     }
   }

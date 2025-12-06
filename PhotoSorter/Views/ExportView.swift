@@ -27,7 +27,7 @@ struct ExportView: View {
             
             Form {
                 Section {
-                    ForEach(SelectionBucket.allCases.filter { $0 != .unrated }, id: \.self) { bucket in
+                    ForEach(SelectionBucket.allCases.filter { $0 != .all }, id: \.self) { bucket in
                         Toggle(isOn: Binding(
                             get: { exportViewModel.selectedBuckets.contains(bucket) },
                             set: { _ in exportViewModel.toggleBucket(bucket) }
@@ -35,7 +35,7 @@ struct ExportView: View {
                             HStack {
                                 Image(systemName: bucket.iconName)
                                     .foregroundColor(bucket.color)
-                                Text(bucket.rawValue)
+                                Text(bucket.label)
                                 Spacer()
                                 Text("\(exportViewModel.photoSortingViewModel.bucketCounts[bucket] ?? 0) photos")
                                     .font(.caption)

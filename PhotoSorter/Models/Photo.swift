@@ -16,11 +16,14 @@ class Photo {
     var dateCreated: Date
     var projectId: UUID
     
-    init(path: String, dateCreated: Date, projectId: UUID) {
+    var project: Project?
+    
+    init(path: String, dateCreated: Date, project: Project) {
         self.id = UUID()
         self.path = path
-        self.bucket = .unrated
+        self.bucket = .all
         self.dateCreated = dateCreated
-        self.projectId = projectId
+        self.projectId = project.id
+        self.project = project
     }
 }
