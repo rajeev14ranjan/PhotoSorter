@@ -95,7 +95,6 @@ class ExportViewModel: ObservableObject {
         
         // Get photos to export
         let photosToExport = photoSortingViewModel.allPhotos.filter { selectedBuckets.contains($0.bucket) }
-        let totalCount = photosToExport.count
         
         var successCount = 0
         var errorCount = 0

@@ -93,7 +93,7 @@ class PhotoSortingViewModel: ObservableObject {
                 
                 guard let enumerator = fileManager.enumerator(at: folderURL, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey]) else { continue }
                 
-                for case let fileURL as URL in enumerator {
+                while let fileURL = enumerator.nextObject() as? URL {
                     let fileExtension = fileURL.pathExtension.lowercased()
                     
                     if supportedExtensions.contains(fileExtension) {

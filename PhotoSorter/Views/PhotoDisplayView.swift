@@ -17,7 +17,7 @@ struct PhotoDisplayView: View {
       ZStack {
         Color.black
 
-        if let photo = viewModel.currentPhoto {
+        if viewModel.currentPhoto != nil {
           if let image = loadedImage {
             Image(nsImage: image)
               .resizable()
