@@ -184,7 +184,33 @@ class PhotoSortingViewModel: ObservableObject {
         moveNext()
     }
     
-
+    // MARK: - Computed Properties for Views
+    
+    /// Returns the filename of the current photo
+    var currentPhotoFileName: String {
+        guard let photo = currentPhoto else { return "" }
+        return URL(fileURLWithPath: photo.path).lastPathComponent
+    }
+    
+    /// Returns the position text for the current photo (e.g., "1 of 10")
+    var currentPhotoPositionText: String {
+        return "\(currentIndex + 1) of \(filteredPhotos.count)"
+    }
+    
+    /// Returns buckets available for selection (excludes current filter and .all)
+    var availableBucketsForSelection: [SelectionBucket] {
+        return SelectionBucket.allCases.filter { $0 != .all && $0 != currentFilter }
+    }
+    
+    /// Returns whether the reset button should be shown
+    var shouldShowResetButton: Bool {
+        return currentFilter != .all
+    }
+    
+    /// Returns the display name for a bucket (removes "ed" suffix)
+    func bucketDisplayName(for bucket: SelectionBucket) -> String {
+        return bucket.label.replacingOccurrences(of: "ed\\b", with: "", options: .regularExpression)
+    }
     
     private func restoreFolderAccess() {
         // Stop accessing previously accessed URLs
