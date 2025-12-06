@@ -46,44 +46,44 @@ class ExportViewModel: ObservableObject {
     }
     
     func selectDestinationAndExport() {
-        // Create a suggested folder name
+        // NEW APPROACH: Use NSSavePanel to let user name a folder, which grants proper write access
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.showsTagField = false
+        panel.nameFieldLabel = "Export Folder:"
+        panel.message = "Choose name and location for export folder"
+        panel.prompt = "Export"
+        
+        // Suggest a folder name
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
         let timestamp = formatter.string(from: Date())
         let projectName = photoSortingViewModel.project.name.replacingOccurrences(of: "/", with: "-")
-        let suggestedFolderName = "\(projectName)_\(timestamp)"
+        panel.nameFieldStringValue = "\(projectName)_\(timestamp)"
         
-        let panel = NSSavePanel()
-        panel.canCreateDirectories = true
-        panel.nameFieldLabel = "Export folder:"
-        panel.nameFieldStringValue = suggestedFolderName
-        panel.message = "Choose where to create the export folder"
-        panel.prompt = "Export"
         panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         
-        if panel.runModal() == .OK, let url = panel.url {
-            startExport(to: url)
+        panel.begin { [weak self] response in
+            guard let self = self else { return }
+            
+            if response == .OK, let exportURL = panel.url {
+                Task { @MainActor in
+                    self.startExport(to: exportURL)
+                }
+            }
         }
     }
     
     private func startExport(to exportURL: URL) {
-        // Start accessing the security-scoped resource
-        let accessing = exportURL.startAccessingSecurityScopedResource()
-        
-        defer {
-            if accessing {
-                exportURL.stopAccessingSecurityScopedResource()
-            }
-        }
-        
         // Reset state
         isExporting = true
         exportProgress = 0
         exportedCount = 0
         self.exportURL = nil
         
-        // Create the export directory
         let fileManager = FileManager.default
+        
+        // NSSavePanel gives us the path, but we need to create the directory
         do {
             try fileManager.createDirectory(at: exportURL, withIntermediateDirectories: true, attributes: nil)
         } catch {
@@ -119,7 +119,6 @@ class ExportViewModel: ObservableObject {
                 try fileManager.copyItem(at: sourceURL, to: finalDestinationURL)
                 successCount += 1
             } catch {
-                print("Error copying file: \(error)")
                 errorCount += 1
             }
             
